@@ -18,17 +18,24 @@ public class CallServiceImpl implements CallService {
 
     private final CallRepository callRepository;
     private final DeepSeekService deepSeekService;
+    private final KnowledgeBaseService knowledgeBaseService;
+    private final TechnicianProfileService technicianProfileService;
     private final ObjectMapper objectMapper;
 
-    public CallServiceImpl(CallRepository callRepository, DeepSeekService deepSeekService, ObjectMapper objectMapper) {
+    public CallServiceImpl(CallRepository callRepository, DeepSeekService deepSeekService,
+                           KnowledgeBaseService knowledgeBaseService,
+                           TechnicianProfileService technicianProfileService, ObjectMapper objectMapper) {
         this.callRepository = callRepository;
         this.deepSeekService = deepSeekService;
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.technicianProfileService = technicianProfileService;
         this.objectMapper = objectMapper;
     }
 
     @Override
     public CallDetailResponse createCall(CallRequest request, UUID userId) {
-        DeepSeekExtractedData extracted = deepSeekService.extract(request.transcript(), request.knowledgeBase());
+        String knowledgeBase = knowledgeBaseService.getContent(userId);
+        DeepSeekExtractedData extracted = deepSeekService.extract(request.transcript(), knowledgeBase);
 
         String reportJson;
         try {
@@ -39,13 +46,29 @@ public class CallServiceImpl implements CallService {
 
         Call call = new Call();
         call.setUserId(userId);
+        call.setTechnicianName(technicianProfileService.getDisplayName(userId));
         call.setTranscript(request.transcript());
-        call.setKnowledgeBase(request.knowledgeBase());
+        call.setKnowledgeBase(knowledgeBase);
         call.setTitle(buildTitle(extracted, request.transcript()));
         call.setReportExtractedData(reportJson);
-        call.setReportSolution(extracted.solucionSugerida());
-        call.setReportSummary(extracted.resumen());
         call.setReportGeneratedAt(Instant.now());
+
+        // Explicit columns for querying/display
+        call.setAtendio(extracted.atendio());
+        call.setNumeroCuenta(extracted.numeroCuenta());
+        call.setDireccion(extracted.direccion());
+        call.setProtocoloKb(extracted.protocoloKb());
+        call.setSeveridad(extracted.severidad());
+        call.setResponsabilidad(extracted.responsabilidad());
+        call.setSintomaReportado(extracted.sintomaReportado());
+        call.setDiagnostico(extracted.diagnostico());
+        call.setAccionesRecomendadas(extracted.accionesRecomendadas());
+        call.setEstadoResolucion(extracted.estadoResolucion());
+        call.setOrdenTrabajo(extracted.ordenTrabajo());
+        call.setTiempoRespuesta(extracted.tiempoRespuesta());
+        call.setCumplimientoProtocolo(extracted.cumplimientoProtocolo());
+        call.setSentimientoCliente(extracted.sentimientoCliente());
+        call.setReportSummary(extracted.resumen());
 
         return toDetailResponse(callRepository.save(call));
     }
@@ -86,10 +109,24 @@ public class CallServiceImpl implements CallService {
                 call.getId(),
                 call.getUserId(),
                 call.getTitle(),
+                call.getTechnicianName(),
                 call.getTranscript(),
                 call.getKnowledgeBase(),
                 call.getReportExtractedData(),
-                call.getReportSolution(),
+                call.getAtendio(),
+                call.getNumeroCuenta(),
+                call.getDireccion(),
+                call.getProtocoloKb(),
+                call.getSeveridad(),
+                call.getResponsabilidad(),
+                call.getSintomaReportado(),
+                call.getDiagnostico(),
+                call.getAccionesRecomendadas(),
+                call.getEstadoResolucion(),
+                call.getOrdenTrabajo(),
+                call.getTiempoRespuesta(),
+                call.getCumplimientoProtocolo(),
+                call.getSentimientoCliente(),
                 call.getReportSummary(),
                 call.getReportGeneratedAt(),
                 call.getCreatedAt(),
