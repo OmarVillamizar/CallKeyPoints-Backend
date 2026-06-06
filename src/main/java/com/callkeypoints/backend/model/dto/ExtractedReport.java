@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
-public record DeepSeekExtractedData(
+public record ExtractedReport(
         String cliente,
         String atendio,
         @JsonProperty("numero_cuenta")          String numeroCuenta,

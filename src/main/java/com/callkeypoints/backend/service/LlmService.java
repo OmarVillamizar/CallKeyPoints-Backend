@@ -1,24 +1,33 @@
 package com.callkeypoints.backend.service;
 
-import com.callkeypoints.backend.model.dto.DeepSeekExtractedData;
+import com.callkeypoints.backend.model.dto.ExtractedReport;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.net.http.HttpClient;
 import java.util.List;
 
+/**
+ * Talks to any OpenAI-compatible chat-completions endpoint (DeepSeek, OpenAI, Ollama,
+ * vLLM, Groq, ...). Provider is chosen entirely by configuration: see {@code app.llm.*}.
+ * No vendor name is baked into the code.
+ */
 @Service
-public class DeepSeekService {
+public class LlmService {
 
-    private static final String DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
-
-    // Static, global instruction block. Kept first and byte-identical across every request so
-    // DeepSeek context caching can reuse it as a prefix. Variable data (KB, transcript) comes after.
-    private static final String INSTRUCTIONS = """
+    /**
+     * Built-in default system prompt (the Colombian ESP incident-report domain).
+     * Used only when a user has not saved their own prompt. Kept first and byte-identical
+     * across requests so provider context caching can reuse it as a prefix. Variable data
+     * (KB, transcript) comes after.
+     */
+    public static final String DEFAULT_PROMPT = """
             You generate the structured incident report that a phone-support technician files after a
             call with a customer of an electrical utility (ESP) in Colombia. The TRANSCRIPT is a recorded
             support call between an AGENTE (the utility's agent) and a CLIENTE (the customer).
@@ -107,30 +116,45 @@ public class DeepSeekService {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final String model;
+    private final Double temperature;
 
-    public DeepSeekService(@Value("${app.deepseek-api-key}") String apiKey, ObjectMapper objectMapper) {
+    public LlmService(@Value("${app.llm.base-url}") String baseUrl,
+                      @Value("${app.llm.api-key}") String apiKey,
+                      @Value("${app.llm.model}") String model,
+                      @Value("${app.llm.temperature}") Double temperature,
+                      ObjectMapper objectMapper) {
+        // HTTP/1.1 keeps behaviour deterministic across providers and test stubs; providers are
+        // reached over TLS where this is equivalent to negotiating h2.
+        HttpClient httpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
         this.restClient = RestClient.builder()
-                .baseUrl(DEEPSEEK_URL)
+                .requestFactory(new JdkClientHttpRequestFactory(httpClient))
+                .baseUrl(baseUrl.endsWith("/") ? baseUrl + "chat/completions" : baseUrl + "/chat/completions")
                 .defaultHeader("Authorization", "Bearer " + apiKey)
                 .build();
         this.objectMapper = objectMapper;
+        this.model = model;
+        this.temperature = temperature;
     }
 
-    public DeepSeekExtractedData extract(String transcript, String knowledgeBase) {
-        // system = static instructions + KB (the cacheable prefix); user = the only variable part.
+    /**
+     * Run the extraction. {@code systemPrompt} is the (per-user or default) instruction block;
+     * the KB is appended to it as the cacheable prefix, and the transcript is the only variable part.
+     */
+    public ExtractedReport extract(String transcript, String knowledgeBase, String systemPrompt) {
         String kb = (knowledgeBase != null && !knowledgeBase.isBlank()) ? knowledgeBase : "(none provided)";
-        String systemContent = INSTRUCTIONS
+        String systemContent = systemPrompt
                 + "\n\nKNOWLEDGE BASE (source of truth — protocols, approved solutions, brand):\n" + kb;
         String userContent = "TRANSCRIPT:\n" + transcript;
 
-        var request = new DeepSeekRequest(
-                "deepseek-chat",
+        var request = new ChatRequest(
+                model,
                 List.of(
                         new Message("system", systemContent),
                         new Message("user", userContent)
                 ),
                 new ResponseFormat("json_object"),
-                0.2
+                temperature
         );
 
         String responseBody;
@@ -141,15 +165,15 @@ public class DeepSeekService {
                     .retrieve()
                     .body(String.class);
         } catch (Exception e) {
-            throw new RuntimeException("DeepSeek API call failed: " + e.getMessage(), e);
+            throw new RuntimeException("LLM API call failed: " + e.getMessage(), e);
         }
 
         try {
             JsonNode root = objectMapper.readTree(responseBody);
             String content = root.path("choices").get(0).path("message").path("content").asString();
-            return objectMapper.readValue(content, DeepSeekExtractedData.class);
+            return objectMapper.readValue(content, ExtractedReport.class);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse DeepSeek response: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to parse LLM response: " + e.getMessage(), e);
         }
     }
 
@@ -157,7 +181,7 @@ public class DeepSeekService {
 
     private record ResponseFormat(String type) {}
 
-    private record DeepSeekRequest(
+    private record ChatRequest(
             String model,
             List<Message> messages,
             @JsonProperty("response_format") ResponseFormat responseFormat,
