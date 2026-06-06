@@ -8,8 +8,11 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -19,24 +22,40 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 
+/**
+ * Stateless security. Validates a bearer JWT from any OIDC/JWKS provider — the issuer,
+ * JWKS URL, signing algorithm and principal claim are all configuration ({@code app.auth.*}),
+ * so no auth vendor is baked into the code.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     private final String corsAllowedOrigins;
     private final String jwksUri;
+    private final String issuer;
+    private final String jwsAlgorithm;
 
     public SecurityConfig(@Value("${app.cors-allowed-origins}") String corsAllowedOrigins,
-                          @Value("${app.jwks-uri}") String jwksUri) {
+                          @Value("${app.auth.jwks-uri}") String jwksUri,
+                          @Value("${app.auth.issuer:}") String issuer,
+                          @Value("${app.auth.jws-alg:ES256}") String jwsAlgorithm) {
         this.corsAllowedOrigins = corsAllowedOrigins;
         this.jwksUri = jwksUri;
+        this.issuer = issuer;
+        this.jwsAlgorithm = jwsAlgorithm;
     }
 
     @Bean
     public JwtDecoder jwtDecoder() {
-        return NimbusJwtDecoder.withJwkSetUri(jwksUri)
-                .jwsAlgorithm(SignatureAlgorithm.ES256)
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwksUri)
+                .jwsAlgorithm(SignatureAlgorithm.from(jwsAlgorithm))
                 .build();
+        OAuth2TokenValidator<Jwt> validator = (issuer != null && !issuer.isBlank())
+                ? JwtValidators.createDefaultWithIssuer(issuer)
+                : JwtValidators.createDefault();
+        decoder.setJwtValidator(validator);
+        return decoder;
     }
 
     @Bean

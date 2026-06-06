@@ -2,9 +2,10 @@ spring:
   application:
     name: ckp
   datasource:
-    url: jdbc:postgresql://${SUPABASE_DB_HOST}:${SUPABASE_DB_PORT}/postgres
-    username: ${SUPABASE_DB_USER}
-    password: ${SUPABASE_DB_PASS}
+    # Set SPRING_DATASOURCE_URL to override the whole JDBC URL, or use the DB_* parts below.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
@@ -17,9 +18,25 @@ server:
   port: ${PORT:9080}
 
 app:
-  jwks-uri: ${SUPABASE_JWKS_URI:https://uxyswambwshpgmqjhgtj.supabase.co/auth/v1/.well-known/jwks.json}
-  deepseek-api-key: ${DEEPSEEK_API_KEY}
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  auth:
+    # JWKS endpoint of your OIDC/identity provider (Supabase, Auth0, Keycloak, Cognito, ...).
+    jwks-uri: ${AUTH_JWKS_URI}
+    # Optional: enforce the token issuer when set.
+    issuer: ${AUTH_ISSUER:}
+    # Signing algorithm of the provider's tokens (ES256, RS256, ...).
+    jws-alg: ${AUTH_JWS_ALG:ES256}
+    # Token claim holding the user id (must be a UUID).
+    principal-claim: ${AUTH_PRINCIPAL_CLAIM:sub}
+  llm:
+    # Any OpenAI-compatible chat-completions provider; base-url defaults to DeepSeek.
+    base-url: ${LLM_BASE_URL:https://api.deepseek.com/v1}
+    model: ${LLM_MODEL:deepseek-chat}
+    api-key: ${LLM_API_KEY}
+    temperature: ${LLM_TEMPERATURE:0.2}
+  rate-limit:
+    # Max POST /api/calls per user per minute (guards the LLM key against cost abuse).
+    calls-per-minute: ${RATE_LIMIT_CALLS_PER_MINUTE:10}
 
 management:
   endpoints:
