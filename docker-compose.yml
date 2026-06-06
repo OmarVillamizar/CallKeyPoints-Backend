@@ -1,0 +1,43 @@
+# One-command local run: `docker compose up --build`.
+# Variable substitution reads the project .env automatically (copy from .env.example).
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${DB_NAME:-postgres}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-postgres}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      AUTH_JWKS_URI: ${AUTH_JWKS_URI}
+      AUTH_ISSUER: ${AUTH_ISSUER:-}
+      AUTH_JWS_ALG: ${AUTH_JWS_ALG:-ES256}
+      AUTH_PRINCIPAL_CLAIM: ${AUTH_PRINCIPAL_CLAIM:-sub}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      RATE_LIMIT_CALLS_PER_MINUTE: ${RATE_LIMIT_CALLS_PER_MINUTE:-10}
+    ports:
+      - "9080:9080"
+
+volumes:
+  pgdata:
