@@ -17,17 +17,20 @@ import java.util.UUID;
 public class CallServiceImpl implements CallService {
 
     private final CallRepository callRepository;
-    private final DeepSeekService deepSeekService;
+    private final LlmService llmService;
     private final KnowledgeBaseService knowledgeBaseService;
+    private final PromptTemplateService promptTemplateService;
     private final TechnicianProfileService technicianProfileService;
     private final ObjectMapper objectMapper;
 
-    public CallServiceImpl(CallRepository callRepository, DeepSeekService deepSeekService,
+    public CallServiceImpl(CallRepository callRepository, LlmService llmService,
                            KnowledgeBaseService knowledgeBaseService,
+                           PromptTemplateService promptTemplateService,
                            TechnicianProfileService technicianProfileService, ObjectMapper objectMapper) {
         this.callRepository = callRepository;
-        this.deepSeekService = deepSeekService;
+        this.llmService = llmService;
         this.knowledgeBaseService = knowledgeBaseService;
+        this.promptTemplateService = promptTemplateService;
         this.technicianProfileService = technicianProfileService;
         this.objectMapper = objectMapper;
     }
@@ -35,7 +38,11 @@ public class CallServiceImpl implements CallService {
     @Override
     public CallDetailResponse createCall(CallRequest request, UUID userId) {
         String knowledgeBase = knowledgeBaseService.getContent(userId);
-        DeepSeekExtractedData extracted = deepSeekService.extract(request.transcript(), knowledgeBase);
+        String prompt = promptTemplateService.getContent(userId);
+        if (prompt.isBlank()) {
+            prompt = LlmService.DEFAULT_PROMPT;
+        }
+        ExtractedReport extracted = llmService.extract(request.transcript(), knowledgeBase, prompt);
 
         String reportJson;
         try {
@@ -97,7 +104,7 @@ public class CallServiceImpl implements CallService {
         callRepository.delete(call);
     }
 
-    private String buildTitle(DeepSeekExtractedData extracted, String transcript) {
+    private String buildTitle(ExtractedReport extracted, String transcript) {
         String source = (extracted.cliente() != null && !extracted.cliente().isBlank())
                 ? extracted.cliente()
                 : transcript;
