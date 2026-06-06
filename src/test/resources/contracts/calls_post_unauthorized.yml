@@ -1,0 +1,13 @@
+# Consumer-driven contract (Spring Cloud Contract YAML).
+# Scaffold only — see docs/CONTRACTS.md to enable the verifier plugin once a Spring Cloud
+# release train compatible with Spring Boot 4 is available.
+description: POST /api/calls without a bearer token is rejected with 401.
+request:
+  method: POST
+  url: /api/calls
+  headers:
+    Content-Type: application/json
+  body:
+    transcript: "any transcript"
+response:
+  status: 401
